@@ -7,12 +7,12 @@
     <title id="pageTitle">AI 助手</title> <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2d000/svg' viewBox='0 0 100 100'><text y='-.1em' x='-.05em' font-size='90'>✨</text></svg>">
     <style>
         /* =================================================== */
-        /* === 颜色变量定义：深浅模式切换的核心 (V8.4 金色主题) === */
+        /* === 颜色变量定义：深浅模式切换的核心 (V8.6 渐变标题) === */
         /* =================================================== */
         :root {
             /* Light Mode Variables */
             --bg-main: #f0f4f9;
-            --bg-card: rgba(255, 255, 255, 0.7); /* 🚀 V8.3：更高透明度 (0.7) */
+            --bg-card: rgba(255, 255, 255, 0.7); /* V8.3：更高透明度 (0.7) */
             --bg-input: #f8f9fa;
             --text-main: #3c4043;
             --text-header: #202124;
@@ -27,16 +27,22 @@
             --color-brand-blue: #1a73e8;
             --color-brand-blue-rgb: 26, 115, 232;
 
-            /* 🚀 V8.4 核心修改：金色主题 */
+            /* 🚀 V8.4/V8.6 核心修改：金色主题 & 渐变标题新增 */
             --color-particle: #FFD700; /* 标准金色 */
             --color-particle-line: #FFA500; /* 橙金色，连线更明显 */
+
+            /* 🆕 Google 渐变色变量，仅用于标题 */
+            --google-blue: #4285f4;
+            --google-red: #ea4335;
+            --google-yellow: #fbbc04;
+            --google-green: #34a853;
         }
 
         /* 深色模式：根据设备设置覆盖颜色变量 */
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-main: #121212;
-                --bg-card: rgba(32, 32, 32, 0.7); /* 🚀 V8.3：更高透明度 (0.7) */
+                --bg-card: rgba(32, 32, 32, 0.7); /* V8.3：更高透明度 (0.7) */
                 --bg-input: #303030;
                 --text-main: #e0e0e0;
                 --text-header: #f5f5f5;
@@ -106,29 +112,35 @@
             position: relative;
         }
 
-        /* 🚀 V7.8 标题呼吸动画 */
-        /* 标题文字样式 */
+        /* 🚀 V8.6 标题渐变色样式 */
         .header-title { 
-            font-weight: 500; 
-            animation: breathe-text 2s infinite alternate ease-in-out; 
+            font-weight: 700; /* 加粗效果更佳 */
+            font-size: 1.5em; 
             transition: color 0.2s;
+            
+            /* 1. 定义背景渐变色 */
+            background: linear-gradient(
+                to right,
+                var(--google-blue), /* 蓝 */
+                var(--google-red), /* 红 */
+                var(--google-yellow), /* 黄 */
+                var(--google-green) /* 绿 */
+            );
+            
+            /* 2. 裁剪背景：让渐变只出现在文字上 */
+            -webkit-background-clip: text; /* 兼容 Safari/Chrome */
+            background-clip: text;
+            
+            /* 3. 字体颜色透明化：让背景颜色透上来 */
+            -webkit-text-fill-color: transparent; /* 兼容 Safari/Chrome */
+            color: transparent; /* 标准属性 */
+            
+            /* 移除旧的动画相关属性 */
+            animation: none; 
+            text-shadow: none;
         }
 
-        /* 🚀 V7.8 新增：标题文字呼吸动画 */
-        @keyframes breathe-text {
-            0% { 
-                opacity: 1;
-                text-shadow: 0 0 1px rgba(var(--color-brand-blue-rgb), 0.2); 
-            }
-            50% { 
-                opacity: 0.95; 
-                text-shadow: 0 0 6px rgba(var(--color-brand-blue-rgb), 0.7); 
-            }
-            100% {
-                opacity: 1;
-                text-shadow: 0 0 1px rgba(var(--color-brand-blue-rgb), 0.2); 
-            }
-        }
+        /* 🚀 移除 @keyframes breathe-text */
 
         .header-icon { font-size: 1em; } 
 
@@ -721,9 +733,6 @@
                 currentAbortController = null; 
                 sendButton.disabled = false;
                 messageInput.placeholder = '向 AI 提问...';
-
-                // isSentinelActive = false; // 🚀 V8.6 修改: 保持哨兵模式开启
-                // updateSentinelHeight();   // 🚀 V8.6 修改: 不再更新，维持高度
             }
         }
 
