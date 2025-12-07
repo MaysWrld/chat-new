@@ -171,7 +171,7 @@
         }
 
 
-        /* V6.2 精简新聊天图标按钮样式 */
+        /* V6.2 精简新聊天图标按钮样式 (桌面尺寸) */
         .input-area .new-chat-icon-button {
             background: none;
             color: var(--text-main);
@@ -193,6 +193,27 @@
             border-color: var(--color-focus-blue);
         }
         /* 按钮样式结束 */
+        
+        /* >>>>>>>>>>>>>> 针对小屏幕的优化 <<<<<<<<<<<<<< */
+        @media (max-width: 600px) {
+            /* 缩小新聊天按钮的大小，让输入框和发送按钮有更多空间 */
+            .input-area .new-chat-icon-button {
+                width: 38px; /* 减小宽度 */
+                height: 38px; /* 减小高度 */
+                font-size: 1.3em; /* 略微减小图标大小 */
+            }
+            /* 调整输入区域内边距和间距，使整体更紧凑 */
+            .input-area {
+                padding: 12px 16px; 
+                gap: 8px; 
+            }
+            /* 调整输入框和发送按钮的内边距，使整体更紧凑 */
+            #messageInput, #sendButton {
+                padding: 10px 16px;
+            }
+        }
+        /* >>>>>>>>>>>>>> 针对小屏幕的优化结束 <<<<<<<<<<<<<< */
+
 
         .chat-box { 
             flex-grow: 1; 
@@ -329,6 +350,7 @@
             let width, height;
             let particles = [];
             const PARTICLE_COUNT = 70;
+            let animationFrameId = null;
 
             // 获取 CSS 变量
             function getCssVariable(name) {
@@ -425,20 +447,29 @@
                     p.draw();
                 });
 
-                requestAnimationFrame(animate);
+                animationFrameId = requestAnimationFrame(animate);
+            }
+            
+            // 启动/停止控制，确保不重复运行
+            function start() {
+                if (!animationFrameId) {
+                    resizeCanvas();
+                    initParticles();
+                    animate();
+                }
             }
 
-            // 初始化
-            resizeCanvas();
-            initParticles();
-            window.addEventListener('resize', () => {
-                resizeCanvas();
-                initParticles();
-            });
-
-            // 启动动画
-            animate();
+            // 暴露启动函数
+            return {
+                start: start,
+                resize: () => {
+                    resizeCanvas();
+                    initParticles();
+                }
+            };
         }
+        const canvasManager = v8CanvasBackgroundScript();
+
         // 🚀 V8.0 Canvas 动画脚本函数结束
 
 
@@ -786,12 +817,17 @@
         newChatButton.addEventListener('click', startNewChat);
 
         document.addEventListener('DOMContentLoaded', () => {
-             // 启动 Canvas 背景动画
-            v8CanvasBackgroundScript();
+            // 启动 Canvas 背景动画
+            canvasManager.start();
             // 获取配置
             fetchConfig();
         });
-        window.addEventListener('resize', updateSentinelHeight); 
+        
+        // 调整 window resize 监听器，确保 Canvas 粒子重新分布
+        window.addEventListener('resize', () => {
+            canvasManager.resize(); // 重新计算Canvas尺寸和粒子位置
+            updateSentinelHeight(); // 重新计算哨兵高度
+        });
     </script>
 </body>
 </html>
