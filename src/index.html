@@ -97,19 +97,20 @@
 
         @media (min-width: 961px) { .chat-container { height: 90vh; border-radius: 28px; } }
 
-        /* 头部样式：使用高透明度背景 */
+        /* 头部样式：【关键修改】移除 justify-content: space-between */
         .header { 
             padding: 16px 24px; 
-            background-color: var(--bg-card); /* 🚀 V8.3：更高透明度 */
+            background-color: var(--bg-card); 
             border-bottom: 1px solid var(--border-main); 
             color: var(--text-header); 
             font-size: 1.2em; 
             font-weight: 500; 
             display: flex; 
             align-items: center; 
-            justify-content: space-between; 
+            /* 保持标题和图标在左侧 */
+            justify-content: flex-start; 
             flex-shrink: 0; 
-            position: relative;
+            position: relative; /* 必须设置 relative，以便子元素 absolute 定位 */
         }
 
         /* 🚀 V8.6 标题渐变色样式 */
@@ -130,6 +131,7 @@
             color: transparent; 
             animation: none; 
             text-shadow: none;
+            margin-right: 8px; /* 标题和图标间距 */
         }
 
         .header-icon { font-size: 1em; } 
@@ -161,45 +163,52 @@
         }
 
         /* ============================================= */
-        /* >>>>>>> 浮动的新聊天按钮样式 (关键修改) <<<<<<< */
+        /* >>>>>>> 标题栏内的新聊天按钮样式 (关键修改) <<<<<<< */
         /* ============================================= */
         #newChatIcon {
-            position: fixed; /* 固定在视口位置 */
-            top: 20px; /* 距离顶部 20px */
-            right: 20px; /* 距离右侧 20px */
-            background: var(--color-brand-blue); /* 品牌蓝色背景 */
-            color: white; /* 白色文字 */
+            position: absolute; /* 相对于 .header 定位 */
+            right: 15px; /* 距离右侧 15px */
+            top: 50%; /* 距离顶部 50% */
+            transform: translateY(-50%); /* 向上移动自身高度的 50% 实现垂直居中 */
+
+            /* 样式和透明度调整 */
+            background: var(--color-brand-blue); 
+            color: white; 
             border: none;
-            width: 50px; /* 默认尺寸稍大 */
-            height: 50px;
+            width: 44px; 
+            height: 44px;
             border-radius: 50%; 
             cursor: pointer;
-            font-size: 1.8em; /* 字体增大 */
+            font-size: 1.5em; 
             font-weight: 500; 
-            z-index: 100; /* 确保它在最上层 */
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s;
+            z-index: 10; 
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: background-color 0.2s, box-shadow 0.2s, opacity 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
+            
+            /* 【核心要求】透明度调整为 30% */
+            opacity: 0.3; 
         }
         #newChatIcon:hover {
-            background-color: #1565c0;
-            transform: scale(1.05);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+            background-color: var(--color-brand-blue); 
+            transform: translateY(-50%) scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            /* 鼠标悬停时，透明度恢复 */
+            opacity: 1; 
         }
 
-        /* 针对小屏幕的调整：缩小浮动按钮 */
+        /* 针对小屏幕的调整：按钮尺寸略微缩小，位置不变 */
         @media (max-width: 600px) {
             #newChatIcon {
-                width: 44px; /* 手机上缩小到 44px */
-                height: 44px;
-                font-size: 1.5em; 
-                top: 15px; /* 距离顶部稍近 */
-                right: 15px; /* 距离右侧稍近 */
+                width: 38px; 
+                height: 38px;
+                font-size: 1.3em; 
+                right: 10px; /* 距离右侧更近 */
             }
         }
-        /* >>>>>>>>>>>>>> 浮动按钮样式结束 <<<<<<<<<<<<<< */
+        /* >>>>>>>>>>>>>> 标题栏内按钮样式结束 <<<<<<<<<<<<<< */
 
 
         .chat-box { 
@@ -279,7 +288,7 @@
             display: flex; 
             padding: 16px 24px; 
             border-top: 1px solid var(--border-main); 
-            background-color: var(--bg-card); /* 🚀 V8.3：更高透明度 */ 
+            background-color: var(--bg-card); 
             align-items: center; 
             gap: 10px; 
             flex-shrink: 0; 
@@ -319,6 +328,7 @@
             <span class="header-title" id="appTitleDisplay">AI 助手</span> 
             <div id="welcomeMessageOverlay" class="welcome-overlay" style="display: none;"></div> 
             <span class="header-icon">✨</span>
+            <button id="newChatIcon">+</button> 
         </div>
         <div class="chat-box" id="chatBox">
             <div id="scrollSentinel"></div>
@@ -329,8 +339,6 @@
         </div>
     </div>
     
-    <button id="newChatIcon">+</button> 
-
     <script>
         const chatBox = document.getElementById('chatBox');
         const messageInput = document.getElementById('messageInput');
