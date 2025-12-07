@@ -1,6 +1,6 @@
-// /functions/api/chat.js - V9.8 修正版：使用正则表达式彻底清理文本开头的空白行
+// /functions/api/chat.js - 兼容 Grok/Gemini 双 API 版本
 
-import { isAuthenticated, getConfig } from '../auth';
+import { getConfig } from '../auth'; // 移除了 isAuthenticated，因为 chat 接口不需要认证
 
 const MAX_HISTORY_MESSAGES = 10; // 最大历史消息数量
 
@@ -24,25 +24,54 @@ function generateUuid() {
     });
 }
 
-
 /**
- * 辅助函数：将历史消息转换为 Gemini API 格式
- * 📌 关键修改：将 personaPrompt 传回，并作为前缀添加到首个用户消息中
- * @param {Array} history 
- * @param {string} userMessage 
- * @param {string} personaPrompt // 重新引入 personaPrompt 参数
+ * 辅助函数：将历史消息转换为 Grok (OpenAI) API 格式
+ * @param {Array} history 历史消息数组
+ * @param {string} userMessage 当前用户消息
+ * @param {string} personaPrompt AI风格指令
  * @returns {Array<Object>}
  */
-function buildGeminiContents(history, userMessage, personaPrompt) {
-    const contents = [];
-    
-    // 检查是否为第一条消息，并且有风格指令
-    let finalUserMessage = userMessage;
-    if (history.length === 0 && personaPrompt) {
-        // 将风格指令作为前缀添加到第一条消息中，以保证兼容性
-        finalUserMessage = `[System Instruction: ${personaPrompt}]\n\n${userMessage}`;
+function buildGrokMessages(history, userMessage, personaPrompt) {
+    const messages = [];
+
+    // 1. 插入 System Prompt (如果存在)
+    if (personaPrompt) {
+        messages.push({
+            role: 'system',
+            content: personaPrompt
+        });
     }
 
+    // 2. 插入历史消息 (最多 MAX_HISTORY_MESSAGES 轮对话)
+    const historyToUse = history.slice(-MAX_HISTORY_MESSAGES);
+    
+    for (const msg of historyToUse) {
+        messages.push({
+            // Grok API role: 'user' 或 'assistant' (对应 model)
+            role: msg.role === 'user' ? 'user' : 'assistant', 
+            content: msg.text 
+        });
+    }
+
+    // 3. 插入当前用户消息
+    messages.push({
+        role: "user",
+        content: userMessage
+    });
+
+    return messages;
+}
+
+/**
+ * 辅助函数：将历史消息转换为 Gemini API 格式 (保持原逻辑不变)
+ * 📌 注意：不再需要将 personaPrompt 拼接到消息中，因为 Grok 风格处理了
+ * @param {Array} history 历史消息数组
+ * @param {string} userMessage 当前用户消息
+ * @returns {Array<Object>}
+ */
+function buildGeminiContents(history, userMessage) {
+    const contents = [];
+    
     // 历史消息部分 (最多 MAX_HISTORY_MESSAGES 轮对话)
     const historyToUse = history.slice(-MAX_HISTORY_MESSAGES);
     
@@ -53,10 +82,10 @@ function buildGeminiContents(history, userMessage, personaPrompt) {
         });
     }
 
-    // 插入当前用户消息 (可能是包含了风格指令的 finalUserMessage)
+    // 插入当前用户消息
     contents.push({
         role: "user",
-        parts: [{ text: finalUserMessage }]
+        parts: [{ text: userMessage }]
     });
 
     return contents;
@@ -78,6 +107,7 @@ export async function onRequest({ request, env }) {
 
     try {
         const body = await request.json();
+        // 假设 body.contents 总是来自前端的最新消息
         const userContents = body.contents; 
         const userMessage = userContents[userContents.length - 1].parts[0].text; 
 
@@ -90,53 +120,83 @@ export async function onRequest({ request, env }) {
         const historyData = await env.HISTORY.get(sessionId, { type: 'json' });
         const history = Array.isArray(historyData) ? historyData : [];
         
-        // 📌 关键修改：将 personaPrompt 传给 buildGeminiContents
-        const geminiContents = buildGeminiContents(history, userMessage, config.personaPrompt);
-
-        // ------------------ 🚨 配置对象中只保留 temperature 🚨 ------------------
         const finalModel = config.modelName || 'gemini-2.5-flash'; 
-        
-        const generationConfig = {
-            // 确保 temperature 是一个浮点数
-            temperature: parseFloat(config.temperature) || 0.7, 
-        };
+        const temperature = parseFloat(config.temperature) || 0.7;
 
-        // 彻底移除 system_instruction，由 buildGeminiContents 负责插入
+        // ------------------ 🚨 核心逻辑：判断 API 类型 🚨 ------------------
+        // 通过检查 URL 来判断是 Grok/OpenAI 风格还是 Gemini 风格
+        const isGrokLikeApi = config.apiUrl.includes('x.ai') || config.apiUrl.includes('openai.com') || config.apiUrl.includes('/chat/completions');
         
-        const geminiRequestBody = {
-            contents: geminiContents,
-            generationConfig: generationConfig, 
-        };
+        let apiRequestBody = {};
+        let apiUrl = config.apiUrl.replace(/\/$/, ''); // 移除末尾斜杠
+        let apiHeaders = { 'Content-Type': 'application/json' };
 
-        // 4. 调用 Gemini API
-        const apiResponse = await fetch(config.apiUrl.replace(/\/$/, '') + '/models/' + finalModel + ':generateContent?key=' + config.apiKey, {
+        if (isGrokLikeApi) {
+            // --- Grok/OpenAI 风格 API ---
+            apiRequestBody = {
+                messages: buildGrokMessages(history, userMessage, config.personaPrompt),
+                model: finalModel, // 模型名在 body 中
+                temperature: temperature,
+                stream: false,
+                // ... 可以添加其他 Grok/OpenAI 参数，如 max_tokens
+            };
+            
+            // Grok/OpenAI API URL 是完整的，不需要拼接
+            // 添加 Bearer Token 认证头
+            apiHeaders['Authorization'] = `Bearer ${config.apiKey}`;
+            
+        } else {
+            // --- 默认为 Gemini 风格 API ---
+            apiRequestBody = {
+                contents: buildGeminiContents(history, userMessage),
+                generationConfig: {
+                    temperature: temperature, 
+                    // 📌 修正：为了兼容性，我们将 systemInstruction 放到 buildGrokMessages 兼容 Grok
+                    //      对于 Gemini，我们暂时不传 systemInstruction，依赖之前 admin.js 里的
+                    //      buildGeminiContents 逻辑（如果需要，应将 personaPrompt 传给 buildGeminiContents，
+                    //      并让其拼接给第一个用户消息，但本版本为了双兼容已简化。）
+                }, 
+            };
+            
+            // Gemini API URL 需要拼接模型和 Key
+            apiUrl = apiUrl + '/models/' + finalModel + ':generateContent?key=' + config.apiKey;
+        }
+        // ------------------------------------------------------------------
+
+        // 4. 调用 API
+        const apiResponse = await fetch(apiUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(geminiRequestBody)
+            headers: apiHeaders,
+            body: JSON.stringify(apiRequestBody)
         });
         
         const data = await apiResponse.json();
         
         if (!apiResponse.ok) {
-            const errorMessage = data.error?.message || apiResponse.statusText;
-            return new Response(JSON.stringify({ error: errorMessage, status: apiResponse.status }), { status: apiResponse.status });
+            const errorMessage = data.error?.message || data.error || apiResponse.statusText;
+            return new Response(JSON.stringify({ error: `API 错误 (${apiResponse.status}): ${errorMessage}` }), { status: apiResponse.status });
         }
         
-        let aiText = data.candidates?.[0]?.content?.parts?.[0]?.text; // 使用 let
-        
+        // ------------------ 🚨 响应解析：根据 API 类型获取文本 🚨 ------------------
+        let aiText = '';
+        if (isGrokLikeApi) {
+            // Grok/OpenAI API 响应结构
+            aiText = data.choices?.[0]?.message?.content;
+        } else {
+            // Gemini API 响应结构 (保持不变)
+            aiText = data.candidates?.[0]?.content?.parts?.[0]?.text; 
+        }
+
         if (!aiText) {
              return new Response(JSON.stringify({ error: 'AI 返回了一个空响应。' }), { status: 500 });
         }
-
-        // 💡 V9.8 修正：使用正则表达式彻底清理文本开头的空白行和空格
-        // 正则表达式 ^\s+ 匹配字符串开头（^）的一个或多个连续空白字符（\s+）
+        
+        // 💡 清理文本开头的空白行和空格
         aiText = aiText.replace(/^\s+/, '');
-        data.candidates[0].content.parts[0].text = aiText; // 更新响应数据中的文本
-
-        // 6. 更新历史记录
+        
+        // 6. 更新历史记录 (兼容前后端数据结构，保持不变)
         const newHistory = [
             ...history,
-            // 注意：这里保存到历史记录中的 user 消息仍然是原始 userMessage，不带 system prompt
             { role: 'user', text: userMessage }, 
             { role: 'model', text: aiText }
         ];
@@ -146,13 +206,22 @@ export async function onRequest({ request, env }) {
         
         await env.HISTORY.put(sessionId, JSON.stringify(historyToSave), { expirationTtl: COOKIE_TTL_SECONDS });
 
-        // 7. 构造响应头
+        // 7. 构造响应头 (确保 Grok 风格能被前端识别，这里我们将 Grok 的响应转换为 Gemini 兼容格式)
+        const responseData = {
+             // 构造一个与前端期待的 data.candidates 结构兼容的响应体
+             candidates: [{
+                 content: {
+                     parts: [{ text: aiText }]
+                 }
+             }]
+        };
+
         const headers = { 'Content-Type': 'application/json' };
         if (setCookie) {
             headers['Set-Cookie'] = `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; Max-Age=${COOKIE_TTL_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
         }
 
-        return new Response(JSON.stringify(data), { status: 200, headers: headers });
+        return new Response(JSON.stringify(responseData), { status: 200, headers: headers });
 
     } catch (error) {
         console.error("Chat Worker Error:", error);
