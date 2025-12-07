@@ -32,14 +32,14 @@
             
             <div class="mb-3">
                 <label for="personaPrompt" class="form-label">AI 风格指令 (System Prompt):</label>
-                <textarea id="personaPrompt" name="personaPrompt" class="form-control" rows="3" required placeholder="定义 AI 的角色和回复风格，如：你是一个带痞气的 AI 助手。"></textarea>
+                <textarea id="personaPrompt" name="personaPrompt" class="form-control" rows="3" required placeholder="定义 AI 的角色和回复风格，如：你是一个负责人的 AI 助手。"></textarea>
             </div>
             
             <h5 class="mt-4 mb-3">AI 接口与模型设置</h5>
 
             <div class="mb-3">
                 <label for="apiUrl" class="form-label">AI API 接口 URL:</label>
-                <input type="url" id="apiUrl" name="apiUrl" class="form-control" required placeholder="如：https://generativelanguage.googleapis.com/v1beta,">
+                <input type="url" id="apiUrl" name="apiUrl" class="form-control" required placeholder="如：https://generativelanguage.googleapis.com/v1">
             </div>
             
             <div class="mb-3">
@@ -49,13 +49,12 @@
             
             <div class="mb-3">
                 <label for="modelName" class="form-label">模型名称:</label>
-                <select id="modelName" name="modelName" class="form-select" required>
-                    <option value="gemini-2.5-flash">gemini-2.5-flash (推荐)</option>
-                    <option value="gemini-2.5-pro">gemini-2.5-pro</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                    <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                     <option value="gemini-1.5-pro">grok-4-1-fast-reasoning</option>
-                </select>
+                <input type="text" id="modelName" name="modelName" class="form-control" list="modelOptions" required placeholder="输入或选择模型名称">
+                <datalist id="modelOptions">
+                    <option value="gemini-2.5-flash">
+                    <option value="grok-4-1-fast-reasoning">
+                </datalist>
+                <div class="form-text">可以直接输入自定义模型名称。</div>
             </div>
 
             <div class="mb-3">
@@ -72,14 +71,24 @@
         const statusElement = document.getElementById('status');
         const form = document.getElementById('configForm');
         
+        /**
+         * 显示状态消息
+         * @param {string} message - 要显示的消息
+         * @param {string} type - 消息类型 ('success', 'danger', 'info', 'warning')
+         */
+        function showStatus(message, type = 'info') {
+            statusElement.className = `alert alert-${type}`;
+            statusElement.textContent = message;
+        }
+
         // 1. 加载现有配置
         async function loadConfig() {
+            showStatus('正在加载配置...', 'info');
             try {
-                const response = await fetch('/api/admin'); 
+                const response = await fetch('/api/admin');
                 
                 if (response.status === 401) {
-                    statusElement.className = 'alert alert-danger';
-                    statusElement.textContent = '认证失败。请刷新页面重新输入凭证。';
+                    showStatus('认证失败。请刷新页面重新输入凭证。', 'danger');
                     return;
                 }
 
@@ -91,20 +100,18 @@
                     document.getElementById('appTitle').value = config.appTitle || '';
                     document.getElementById('personaPrompt').value = config.personaPrompt || '';
                     
-                    // 📌 加载新字段
+                    // 📌 确保 modelName 字段正确加载到 input 中
                     document.getElementById('modelName').value = config.modelName || 'gemini-2.5-flash';
+                    
                     // 温度需要处理为浮点数，并确保显示
                     document.getElementById('temperature').value = (config.temperature !== undefined && config.temperature !== null) ? parseFloat(config.temperature).toFixed(1) : '0.7';
                     
-                    statusElement.className = 'alert alert-info';
-                    statusElement.textContent = '配置加载成功。';
+                    showStatus('配置加载成功。', 'info');
                 } else {
-                    statusElement.className = 'alert alert-warning';
-                    statusElement.textContent = `加载配置失败，状态码: ${response.status}`;
+                    showStatus(`加载配置失败，状态码: ${response.status}`, 'warning');
                 }
             } catch (error) {
-                statusElement.className = 'alert alert-danger';
-                statusElement.textContent = '网络请求错误。';
+                showStatus('网络请求错误。', 'danger');
             }
         }
 
@@ -112,6 +119,13 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const submitButton = form.querySelector('button[type="submit"]');
+            const originalButtonText = submitButton.textContent;
+            
+            // 禁用按钮并显示“保存中”
+            submitButton.disabled = true;
+            submitButton.textContent = '保存中...';
+
             const data = {
                 apiUrl: document.getElementById('apiUrl').value,
                 apiKey: document.getElementById('apiKey').value,
@@ -121,7 +135,7 @@
                 
                 // 📌 提交新字段
                 modelName: document.getElementById('modelName').value,
-                temperature: document.getElementById('temperature').value // 以字符串形式提交，Worker 中处理校验
+                temperature: document.getElementById('temperature').value
             };
             
             try {
@@ -131,20 +145,27 @@
                     body: JSON.stringify(data)
                 });
                 
+                // 启用按钮
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText;
+
                 const result = await response.json();
 
                 if (response.ok) {
+                    // 📌 需求 1: 显示保存成功的消息
+                    showStatus('✅ 配置保存成功！', 'success');
+                    
                     // 重新加载配置，确保页面上的温度值是格式化后的
-                    loadConfig(); 
-                    statusElement.className = 'alert alert-success';
-                    statusElement.textContent = result.message;
+                    loadConfig();
                 } else {
-                    statusElement.className = 'alert alert-danger';
-                    statusElement.textContent = `保存失败: ${result.error || response.statusText}`;
+                    showStatus(`保存失败: ${result.error || response.statusText}`, 'danger');
                 }
             } catch (error) {
-                statusElement.className = 'alert alert-danger';
-                statusElement.textContent = '保存时发生网络错误。';
+                // 启用按钮
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText;
+                
+                showStatus('保存时发生网络错误。', 'danger');
             }
         });
 
