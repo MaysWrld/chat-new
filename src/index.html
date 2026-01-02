@@ -40,15 +40,20 @@
             background-color: var(--bg-card); 
             display: flex; flex-direction: column; 
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-            position: relative; z-index: 1; 
+            position: relative; overflow: hidden;
         }
 
         @media (min-width: 961px) { .chat-container { height: 90vh; border-radius: 28px; } }
 
+        /* 优化点 1: 确保 Header 具有明确的背景和最高层级 */
         .header { 
-            padding: 16px 24px; border-bottom: 1px solid var(--border-main); 
+            padding: 16px 24px; 
+            border-bottom: 1px solid var(--border-main); 
+            background-color: var(--bg-card); /* 必须有不透明背景 */
             display: flex; align-items: center; justify-content: flex-start; 
-            position: relative; flex-shrink: 0;
+            position: relative; 
+            z-index: 100; /* 确保在消息之上 */
+            flex-shrink: 0;
         }
 
         .header-title { 
@@ -62,7 +67,7 @@
         .welcome-overlay {
             position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
             font-size: 0.8em; color: #9aa0a6; background-color: var(--bg-input); 
-            padding: 4px 12px; border-radius: 16px; z-index: 10; white-space: nowrap;
+            padding: 4px 12px; border-radius: 16px; z-index: 110; white-space: nowrap;
         }
 
         @keyframes fade-out { 0% { opacity: 0.7; } 100% { opacity: 0; visibility: hidden; } }
@@ -74,16 +79,22 @@
             width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
             font-size: 1.5em; font-weight: bold; opacity: 0.3; transition: all 0.2s;
             display: flex; align-items: center; justify-content: center;
+            z-index: 120;
         }
         #newChatIcon:hover { opacity: 1; transform: translateY(-50%) scale(1.1); }
 
+        /* 优化点 2: 聊天区域的溢出控制 */
         .chat-box { 
-            flex-grow: 1; padding: 20px 24px; overflow-y: auto; 
-            display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; 
-            -webkit-overflow-scrolling: touch;
+            flex-grow: 1; padding: 20px 24px; 
+            overflow-y: auto; 
+            display: flex; flex-direction: column; gap: 16px; 
+            scroll-behavior: smooth; 
+            position: relative;
+            z-index: 10;
         }
 
-        .message { padding: 12px 18px; border-radius: 20px; max-width: 80%; line-height: 1.6; word-wrap: break-word; font-size: 0.95em; scroll-margin-top: 20px; }
+        /* 优化点 3: 调整置顶时的间距感 */
+        .message { padding: 12px 18px; border-radius: 20px; max-width: 80%; line-height: 1.6; word-wrap: break-word; font-size: 0.95em; scroll-margin-top: 10px; }
         .user-message { align-self: flex-end; background-color: var(--color-user); }
         .ai-message { align-self: flex-start; background-color: var(--color-ai); }
         .system-message { align-self: center; background-color: var(--color-system-bg); color: var(--color-system-text); font-size: 0.85em; padding: 8px 12px; border-radius: 12px; }
@@ -95,12 +106,11 @@
         .ai-message table { border-collapse: collapse; margin: 15px 0; display: block; overflow-x: auto; }
         .ai-message th, .ai-message td { border: 1px solid var(--border-main); padding: 8px 12px; text-align: left; }
 
-        .input-area { padding: 16px 24px; border-top: 1px solid var(--border-main); display: flex; gap: 10px; flex-shrink: 0; }
+        .input-area { padding: 16px 24px; border-top: 1px solid var(--border-main); background-color: var(--bg-card); display: flex; gap: 10px; flex-shrink: 0; z-index: 100; }
         #messageInput { flex-grow: 1; padding: 12px 18px; border-radius: 24px; border: 1px solid var(--border-main); background-color: var(--bg-input); color: var(--text-main); outline: none; }
         #messageInput:focus { border-color: var(--color-focus-blue); }
         #sendButton { padding: 10px 20px; background-color: var(--color-brand-blue); color: #202124; border: none; border-radius: 24px; cursor: pointer; font-weight: bold; }
         
-        /* 哨兵 CSS */
         #scrollSentinel { min-height: 1px; flex-shrink: 0; visibility: hidden; }
     </style>
 </head>
@@ -136,7 +146,6 @@
         let typingTimerIds = []; 
         let isSentinelActive = false; 
 
-        // 恢复：动态哨兵高度计算
         function updateSentinelHeight() {
             if (isSentinelActive) {
                 const chatBoxHeight = chatBox.clientHeight;
@@ -196,7 +205,6 @@
                 messageDiv.innerHTML = text;
             }
             chatBox.insertBefore(messageDiv, scrollSentinel);
-            // 恢复：非用户消息触发自动滚动
             if (sender !== 'user') { chatBox.scrollTop = chatBox.scrollHeight; }
             return messageDiv;
         }
@@ -248,13 +256,13 @@
             stopAllTyping();
             if (currentAbortController) currentAbortController.abort();
 
-            isSentinelActive = true; // 激活哨兵
+            isSentinelActive = true; 
             const userMsg = appendMessage('user', message);
             messageInput.value = '';
             sendButton.disabled = true;
 
-            // 恢复：发送后强制滚动到用户消息
             updateSentinelHeight();
+            // 优化点 4: 发送后立即置顶显示新消息
             userMsg.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
             const aiMessageDiv = appendMessage('ai', '');
