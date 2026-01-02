@@ -11,7 +11,7 @@
         /* =================================================== */
         :root {
             --bg-main: #121212;
-            --bg-card: #202124; /* 纯色，无透明度 */
+            --bg-card: #202124; 
             --bg-input: #303134;
             --text-main: #e8eaed;
             --text-header: #f8f9fa;
@@ -80,15 +80,16 @@
         .chat-box { 
             flex-grow: 1; padding: 20px 24px; overflow-y: auto; 
             display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; 
+            -webkit-overflow-scrolling: touch;
         }
 
-        .message { padding: 12px 18px; border-radius: 20px; max-width: 80%; line-height: 1.6; word-wrap: break-word; font-size: 0.95em; }
+        .message { padding: 12px 18px; border-radius: 20px; max-width: 80%; line-height: 1.6; word-wrap: break-word; font-size: 0.95em; scroll-margin-top: 20px; }
         .user-message { align-self: flex-end; background-color: var(--color-user); }
         .ai-message { align-self: flex-start; background-color: var(--color-ai); }
         .system-message { align-self: center; background-color: var(--color-system-bg); color: var(--color-system-text); font-size: 0.85em; padding: 8px 12px; border-radius: 12px; }
 
         @keyframes breathe-border { 0%, 100% { box-shadow: 0 0 0 0px rgba(var(--color-brand-blue-rgb), 0.3); } 50% { box-shadow: 0 0 0 3px rgba(var(--color-brand-blue-rgb), 0.5); } }
-        .ai-thinking { border: 1px solid var(--color-brand-blue); animation: breathe-border 1.5s infinite; }
+        .ai-thinking { border: 1px solid var(--color-brand-blue); animation: breathe-border 1.5s infinite; padding: 11px 17px; }
 
         .ai-message pre { background-color: var(--color-code-bg); padding: 12px; border-radius: 8px; overflow-x: auto; font-family: monospace; margin: 10px 0; }
         .ai-message table { border-collapse: collapse; margin: 15px 0; display: block; overflow-x: auto; }
@@ -98,8 +99,9 @@
         #messageInput { flex-grow: 1; padding: 12px 18px; border-radius: 24px; border: 1px solid var(--border-main); background-color: var(--bg-input); color: var(--text-main); outline: none; }
         #messageInput:focus { border-color: var(--color-focus-blue); }
         #sendButton { padding: 10px 20px; background-color: var(--color-brand-blue); color: #202124; border: none; border-radius: 24px; cursor: pointer; font-weight: bold; }
-        #sendButton:disabled { background-color: #3c4043; color: #80868b; cursor: not-allowed; }
-        #scrollSentinel { min-height: 1px; visibility: hidden; }
+        
+        /* 哨兵 CSS */
+        #scrollSentinel { min-height: 1px; flex-shrink: 0; visibility: hidden; }
     </style>
 </head>
 <body>
@@ -134,12 +136,21 @@
         let typingTimerIds = []; 
         let isSentinelActive = false; 
 
+        // 恢复：动态哨兵高度计算
+        function updateSentinelHeight() {
+            if (isSentinelActive) {
+                const chatBoxHeight = chatBox.clientHeight;
+                scrollSentinel.style.height = (chatBoxHeight - 100) + 'px';
+            } else {
+                scrollSentinel.style.height = '0px';
+            }
+        }
+
         function stopAllTyping() {
             typingTimerIds.forEach(id => clearTimeout(id));
             typingTimerIds = [];
         }
 
-        // 恢复完整的 Markdown 渲染（含表格逻辑）
         function renderMarkdown(text) {
             let htmlText = text;
             htmlText = htmlText.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
@@ -185,7 +196,8 @@
                 messageDiv.innerHTML = text;
             }
             chatBox.insertBefore(messageDiv, scrollSentinel);
-            chatBox.scrollTop = chatBox.scrollHeight;
+            // 恢复：非用户消息触发自动滚动
+            if (sender !== 'user') { chatBox.scrollTop = chatBox.scrollHeight; }
             return messageDiv;
         }
 
@@ -206,8 +218,8 @@
             });
         }
 
-        // 核心修复：调取后台设置的函数
         async function fetchConfig() {
+            updateSentinelHeight();
             try {
                 const response = await fetch('/api/admin');
                 if (response.ok) {
@@ -236,9 +248,14 @@
             stopAllTyping();
             if (currentAbortController) currentAbortController.abort();
 
-            appendMessage('user', message);
+            isSentinelActive = true; // 激活哨兵
+            const userMsg = appendMessage('user', message);
             messageInput.value = '';
             sendButton.disabled = true;
+
+            // 恢复：发送后强制滚动到用户消息
+            updateSentinelHeight();
+            userMsg.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
             const aiMessageDiv = appendMessage('ai', '');
             aiMessageDiv.classList.add('ai-thinking');
@@ -259,7 +276,7 @@
             } catch (e) {
                 if (e.name !== 'AbortError') {
                     aiMessageDiv.remove();
-                    appendMessage('system', '连接失败。');
+                    appendMessage('system', '网络错误，无法连接 AI。');
                 }
             } finally {
                 sendButton.disabled = false;
@@ -267,7 +284,12 @@
         }
 
         sendButton.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey) sendMessage(); });
+        messageInput.addEventListener('keydown', e => { 
+            if(e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
         newChatButton.addEventListener('click', async () => {
             if (confirm("开启新聊天？")) {
                 await fetch('/api/new_chat', { method: 'POST' });
@@ -275,8 +297,8 @@
             }
         });
 
-        // 页面加载时执行
         window.onload = fetchConfig;
+        window.addEventListener('resize', updateSentinelHeight);
     </script>
 </body>
 </html>
